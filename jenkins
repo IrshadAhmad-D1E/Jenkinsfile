@@ -1,0 +1,72 @@
+pipeline {
+    agent any
+    
+    environment {
+        DOCKER_HUB_CREDENTIALS = credentials('docker-hub-credentials')
+        DOCKER_IMAGE = 'your-dockerhub-username/payroll-management-system'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', 
+                url: 'https://github.com/Duisternis/Payroll-Management-System.git'
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.build("${DOCKER_IMAGE}:${env.BUILD_ID}")
+                }
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                script {
+                    // Example: Run your tests inside the Docker container
+                    docker.image("${DOCKER_IMAGE}:${env.BUILD_ID}").inside {
+                        sh 'npm test'  // or whatever test command your app uses
+                    }
+                }
+            }
+        }
+        
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
+                        docker.image("${DOCKER_IMAGE}:${env.BUILD_ID}").push()
+                        docker.image("${DOCKER_IMAGE}:latest").push()
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy') {
+            steps {
+                script {
+                    // Example deployment - adjust for your environment
+                    sh "docker-compose down && docker-compose up -d"
+                    // Or for cloud deployment:
+                    // sh "kubectl apply -f k8s-deployment.yaml"
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Pipeline completed'
+            // Clean up
+            sh "docker rmi ${DOCKER_IMAGE}:${env.BUILD_ID} || true"
+        }
+        success {
+            echo 'Pipeline succeeded!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+    }
+}
